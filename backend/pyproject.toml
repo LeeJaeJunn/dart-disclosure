@@ -1,0 +1,19 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "LeeJaeJunn", email = "leejjun00@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi[standard]>=0.162.0",
+    "openai>=3.40.0",
+    "pydantic-settings>=2.16.1",
+]
+
+[tool.fastapi]
+entrypoint = "src.main:app"
+
+[tool.uv]
+package = false
