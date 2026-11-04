@@ -7,6 +7,9 @@ DART 공시 기반 질의응답 서비스. 국내 상장기업 공시를 수집�
 
 Phase 1(공시 수집 및 기업 페이지) 시작 전. 현재 구현된 것은 FastAPI 기본 앱과 OpenAI 호출 테스트용 `POST /chat`뿐이다.
 
+Phase 4와 Company Knowledge(기업 지식 비교·누적·업데이트)는 추후 구현이므로 요청이 없으면 구현하지 않는다.
+자세한 범위는 [docs/design.md](docs/design.md)의 `추후 구현` 섹션을 참고한다.
+
 ## 구조
 
 ```
@@ -20,6 +23,7 @@ Disclosure/
 │       ├── api/
 │       │   ├── main.py # 기능별 라우터를 api_router로 통합
 │       │   └── routes/ # 기능별 엔드포인트 (root.py, chat.py)
+│       ├── dart/       # DART OpenAPI 호출
 │       └── llm/        # OpenAI 호출
 ├── frontend/           # Vite + React 19 + TypeScript, pnpm
 └── docs/design.md      # 서비스 설계 문서
