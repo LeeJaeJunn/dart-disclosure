@@ -1,41 +1,44 @@
-import { useState, type FormEvent } from 'react'
-import './App.css'
+import { useState, type FormEvent } from "react";
+import "./App.css";
 
 type Message = {
-  role: 'user' | 'assistant' | 'error'
-  content: string
-}
+  role: "user" | "assistant" | "error";
+  content: string;
+};
 
 function App() {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    const message = input.trim()
-    if (!message || loading) return
+    e.preventDefault();
+    const message = input.trim();
+    if (!message || loading) return;
 
-    setMessages((prev) => [...prev, { role: 'user', content: message }])
-    setInput('')
-    setLoading(true)
+    setMessages((prev) => [...prev, { role: "user", content: message }]);
+    setInput("");
+    setLoading(true);
 
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message }),
-      })
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-      const data: { reply: string } = await res.json()
-      setMessages((prev) => [...prev, { role: 'assistant', content: data.reply }])
+      });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      const data: { reply: string } = await res.json();
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: data.reply },
+      ]);
     } catch (err) {
       setMessages((prev) => [
         ...prev,
-        { role: 'error', content: `요청 실패: ${(err as Error).message}` },
-      ])
+        { role: "error", content: `요청 실패: ${(err as Error).message}` },
+      ]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -64,7 +67,7 @@ function App() {
         </button>
       </form>
     </main>
-  )
+  );
 }
 
-export default App
+export default App;

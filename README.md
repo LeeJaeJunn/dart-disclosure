@@ -8,9 +8,35 @@ DART에 공개된 국내 상장기업의 공시를 수집·구조화하고, 요�
 
 - Python 3.14, [uv](https://docs.astral.sh/uv/)
 - Node.js, [pnpm](https://pnpm.io/)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (DB 실행용)
 - OpenAI API 키
 
 ## 실행
+
+### 데이터베이스
+
+PostgreSQL 18 + pgvector를 Docker로 실행합니다. 프로젝트 루트에서 실행하세요.
+
+```bash
+docker compose up -d     # DB 실행
+docker compose ps        # STATUS가 (healthy)이면 준비 완료
+```
+
+처음 한 번은 pgvector 확장을 켭니다.
+
+```bash
+docker compose exec db psql -U disclosure -d disclosure -c "CREATE EXTENSION IF NOT EXISTS vector;"
+```
+
+| 항목 | 값 |
+|---|---|
+| Host | `localhost` |
+| Port | `5433` |
+| Database / User / Password | `disclosure` |
+
+- 중지: `docker compose down` (데이터는 유지)
+- 데이터까지 초기화: `docker compose down -v`
+- 로그 확인: `docker compose logs db`
 
 ### 백엔드
 

@@ -1,0 +1,19 @@
+services:
+  db:
+    image: pgvector/pgvector:pg18
+    container_name: disclosure-db
+    environment:
+      POSTGRES_USER: disclosure
+      POSTGRES_PASSWORD: disclosure
+      POSTGRES_DB: disclosure
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql # PG18부터는 이 경로에 마운트
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U disclosure"]
+      interval: 5s
+      retries: 5
+
+volumes:
+  pgdata:
