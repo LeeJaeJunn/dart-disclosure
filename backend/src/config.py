@@ -6,6 +6,7 @@ class Settings(BaseSettings):
 
     openai_api_key: str
     openai_model: str = "gpt-6-luna"
+    embedding_model: str = "text-embedding-3-small"
     opendart_api_key: str
 
 

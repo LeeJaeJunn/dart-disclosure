@@ -3,9 +3,7 @@
 DART 공시 기반 질의응답 서비스. 국내 상장기업 공시를 수집·구조화하고, 요약·질의응답·기간별 비교를 제공한다.
 서비스 목표, 기능, 데이터 구조 등 전체 설계는 [docs/design.md](docs/design.md)를 참고한다.
 
-## 현재 단계
-
-Phase 1(공시 수집 및 기업 페이지) 시작 전. 현재 구현된 것은 FastAPI 기본 앱과 OpenAI 호출 테스트용 `POST /chat`뿐이다.
+## 단계
 
 Phase 4와 Company Knowledge(기업 지식 비교·누적·업데이트)는 추후 구현이므로 요청이 없으면 구현하지 않는다.
 자세한 범위는 [docs/design.md](docs/design.md)의 `추후 구현` 섹션을 참고한다.
@@ -26,7 +24,9 @@ Disclosure/
 │       ├── dart/       # DART OpenAPI 호출
 │       └── llm/        # OpenAI 호출
 ├── frontend/           # Vite + React 19 + TypeScript, pnpm
-└── docs/design.md      # 서비스 설계 문서
+└── docs/
+    ├── design.md       # 서비스 설계 문서
+    └── discussion.md   # 팀 논의 사항 (미확정)
 ```
 
 ## DB 구조
@@ -104,7 +104,7 @@ analysis                      # LLM 기업분석 보고서 (공시 1건 × 템�
         └── diag            object        디버깅용 진단 정보
 ```
 
-알려진 문제 (팀원과 정리 예정)
+알려진 문제 (팀원과 정리 예정, 자세한 내용과 선택지는 [docs/discussion.md](docs/discussion.md))
 
 - `analysis.sections[].sources[].chunk_id`가 `wiki:` 접두어를 갖고 있어 `chunk.chunk_id`와 바로 연결되지 않는다.
 - `analysis.sections[].sources[]`의 `rcept_dt`, `report_nm`이 null이다. 공시 정보는 `filing`에서 조인해 쓴다.
@@ -133,9 +133,10 @@ analysis                      # LLM 기업분석 보고서 (공시 1건 × 템�
 - 요청과 응답 스키마는 Pydantic 모델로 정의한다.
 - LLM 호출은 `openai` SDK의 Responses API(`client.responses.create`)를 사용하고, 모델 이름은 코드에 하드코딩하지 않고 `settings.openai_model`을 사용한다.
 - 공시 데이터에서 나온 모든 답변과 요약에는 근거(공시명, 공시일, 접수번호, 원문 위치, DART 링크)를 연결한다. 원문에서 확인한 사실과 LLM의 해석은 구분한다.
+- 팀원과 논의가 필요한 사항은 `docs/discussion.md`에 기존 항목 형식(상태, 현황, 선택지, 결론)으로 추가한다. 이 파일의 `결정됨`이 아닌 항목은 확정된 방향으로 보고 구현하지 않는다.
 
 ## 기술 방향 (계획, 미확정)
 
 - DB: PostgreSQL + pgvector (메타데이터, Company Knowledge, 벡터 검색을 한 DB에서 처리)
-- 질의응답 파이프라인(Phase 3)과 Company Knowledge 업데이트 로직에 LangGraph 도입. Phase 1~2는 일반 함수로 구현한다.
+- 질의응답 파이프라인(Phase 3)과 Company Knowledge 업데이트 로직에 LangGraph 도입. Phase 1~2는 LangChain으로 구현한다.
 - DART OpenAPI: `corpCode.xml`(기업 고유번호), `list.json`(공시 목록), `document.xml`(공시 원문)
