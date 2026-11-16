@@ -55,15 +55,19 @@ def to_source(n: int, c: RetrievedChunk) -> Source:
 async def answer(question: str, chunks: list[RetrievedChunk]) -> AskResponse:
     """검색 결과만 근거로 질문에 답한다."""
     if not chunks:
-        return AskResponse(answer=NO_EVIDENCE, sources=[])
+        return AskResponse(type="disclosure", answer=NO_EVIDENCE, sources=[])
 
     messages = [
         ("system", ANSWER_SYSTEM),
         ("user", ANSWER_USER.format(context=build_context(chunks), question=question)),
     ]
+    # print(json.dumps(messages, ensure_ascii=False, indent=2))
 
     response = await get_chat_model().ainvoke(messages)
+    # print()
+    # print(json.dumps(response.model_dump(), ensure_ascii=False, indent=2, default=str))
+
     text = str(response.text)
 
     sources = [to_source(n, chunks[n - 1]) for n in cited_numbers(text, len(chunks))]
-    return AskResponse(answer=text, sources=sources)
+    return AskResponse(type="disclosure", answer=text, sources=sources)

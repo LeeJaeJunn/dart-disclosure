@@ -1,5 +1,7 @@
 """질의응답 요청·응답 스키마."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -43,5 +45,12 @@ class Source(BaseModel):
 class AskResponse(BaseModel):
     """질문에 대한 답변과 근거."""
 
+    type: Literal["general", "disclosure"] = Field(
+        description="general: 공시 검색 없이 답한 일반 대화 (근거 없음) / disclosure: 공시 검색 결과로 답함",
+    )
     answer: str = Field(description="답변 본문. 근거는 [n] 형식으로 인용")
     sources: list[Source] = Field(description="답변에 사용한 근거 목록")
+    search_args: dict | None = Field(
+        default=None,
+        description="LLM이 정한 검색 조건 (query, corp_name, report_type, period). 확인용",
+    )

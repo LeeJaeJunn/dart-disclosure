@@ -2,11 +2,17 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query
 
-from src.qa.answerer import answer
+from src.qa.pipeline import ask
 from src.qa.retriever import search
 from src.qa.schemas import AskRequest, AskResponse, RetrievedChunk
 
 router = APIRouter(prefix="/qa", tags=["qa"])
+
+
+@router.post("/ask")
+async def ask_question(req: AskRequest) -> AskResponse:
+    """질문에 답한다. 공시 질문이면 공시를 검색해 근거와 함께 답한다."""
+    return await ask(req.question, req.top_k)
 
 
 # 검색 결과 확인용 (LLM 답변 없이 검색만)
@@ -16,10 +22,3 @@ async def search_chunks(
     k: Annotated[int, Query(ge=1, le=20, description="가져올 결과 수")] = 5,
 ) -> list[RetrievedChunk]:
     return await search(question, k)
-
-
-# 테스트용: 질문 분류 없이 바로 검색 → 답변. pipeline(POST /qa/ask)을 만들면 삭제
-@router.post("/answer")
-async def search_and_answer(req: AskRequest) -> AskResponse:
-    chunks = await search(req.question, req.top_k)
-    return await answer(req.question, chunks)
