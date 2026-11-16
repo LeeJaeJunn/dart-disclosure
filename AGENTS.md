@@ -22,7 +22,8 @@ Disclosure/
 │       │   ├── main.py # 기능별 라우터를 api_router로 통합
 │       │   └── routes/ # 기능별 엔드포인트 (root.py, chat.py)
 │       ├── dart/       # DART OpenAPI 호출
-│       └── llm/        # OpenAI 호출
+│       ├── llm/        # 공통: LLM·임베딩 모델 생성 (models.py)
+│       └── qa/         # 질의응답 (질문 → 검색 → 답변)
 ├── frontend/           # Vite + React 19 + TypeScript, pnpm
 └── docs/
     ├── design.md       # 서비스 설계 문서
@@ -131,7 +132,10 @@ analysis                      # LLM 기업분석 보고서 (공시 1건 × 템�
 - 엔드포인트는 `src/api/routes/`에 기능별 파일로 작성하고, `src/api/main.py`에 `include_router`로 등록한다. `src/main.py`에 직접 추가하지 않는다.
 - 환경 변수와 API 키는 `backend/.env`에 두고 `config.py`의 `Settings`를 통해서만 읽는다. 새 설정을 추가하면 `.env.example`도 함께 갱신한다.
 - 요청과 응답 스키마는 Pydantic 모델로 정의한다.
-- LLM 호출은 `openai` SDK의 Responses API(`client.responses.create`)를 사용하고, 모델 이름은 코드에 하드코딩하지 않고 `settings.openai_model`을 사용한다.
+- LLM·임베딩 호출은 `src/llm/models.py`의 `get_chat_model()`, `get_embeddings()`로 만든 LangChain 모델을 사용한다. 기능 코드에서 모델 객체를 직접 만들지 않는다.
+  - 채팅 모델은 OpenAI Responses API(`use_responses_api=True`)를 사용한다.
+  - 모델 이름은 코드에 하드코딩하지 않고 `settings.openai_model`, `settings.embedding_model`을 사용한다.
+  - 프롬프트와 호출 로직은 각 기능 폴더(예: `src/qa/`)에 둔다. `src/llm/`에는 모델 생성만 둔다.
 - 공시 데이터에서 나온 모든 답변과 요약에는 근거(공시명, 공시일, 접수번호, 원문 위치, DART 링크)를 연결한다. 원문에서 확인한 사실과 LLM의 해석은 구분한다.
 - 팀원과 논의가 필요한 사항은 `docs/discussion.md`에 기존 항목 형식(상태, 현황, 선택지, 결론)으로 추가한다. 이 파일의 `결정됨`이 아닌 항목은 확정된 방향으로 보고 구현하지 않는다.
 

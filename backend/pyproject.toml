@@ -12,6 +12,8 @@ dependencies = [
     "langchain>=1.4.9",
     "langchain-openai>=1.7.4",
     "openai>=3.40.0",
+    "pgvector>=0.5.1",
+    "psycopg[binary,pool]>=3.3.9",
     "pydantic-settings>=2.16.1",
 ]
 
