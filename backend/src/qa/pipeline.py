@@ -28,7 +28,6 @@ from src.qa.retriever import search
 from src.qa.schemas import AskResponse
 from src.qa.tools import CorpName, SearchDisclosuresArgs, search_disclosures
 
-
 def no_company_response(company: str | None, search_args: dict) -> AskResponse:
     """보유하지 않은 회사를 물었을 때의 답변. 검색하지 않는다."""
     name = company or "해당 회사"
@@ -40,9 +39,6 @@ def no_company_response(company: str | None, search_args: dict) -> AskResponse:
         search_args=search_args,
     )
 
-import json
-
-
 async def ask(question: str, top_k: int = 5) -> AskResponse:
     """사용자 질문에 답한다. 공시 질문이면 검색 결과를 근거로 답한다."""
     router = get_chat_model().bind_tools([search_disclosures])
@@ -51,7 +47,6 @@ async def ask(question: str, top_k: int = 5) -> AskResponse:
         ("user", question),
     ]
     decision = await router.ainvoke(messages)
-    print(json.dumps(decision.model_dump(), ensure_ascii=False, indent=2, default=str))
 
     # tool 호출 없음: 일반 대화. 1차 응답이 곧 답변이다.
     if not decision.tool_calls:

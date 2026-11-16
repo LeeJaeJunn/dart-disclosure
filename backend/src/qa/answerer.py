@@ -11,8 +11,6 @@ from src.llm.models import get_chat_model
 from src.qa.prompts import ANSWER_SYSTEM, ANSWER_USER, CONTEXT_ITEM
 from src.qa.schemas import AskResponse, RetrievedChunk, Source
 
-import json
-
 NO_EVIDENCE = "질문과 관련된 공시 근거를 찾지 못했습니다. 회사명이나 기간을 넣어 다시 질문해 주세요."
 
 MAX_CHUNK_CHARS = 2000      # 근거 1건이 프롬프트에 들어가는 최대 길이 (긴 표 청크 대비)
@@ -61,11 +59,8 @@ async def answer(question: str, chunks: list[RetrievedChunk]) -> AskResponse:
         ("system", ANSWER_SYSTEM),
         ("user", ANSWER_USER.format(context=build_context(chunks), question=question)),
     ]
-    # print(json.dumps(messages, ensure_ascii=False, indent=2))
 
     response = await get_chat_model().ainvoke(messages)
-    # print()
-    # print(json.dumps(response.model_dump(), ensure_ascii=False, indent=2, default=str))
 
     text = str(response.text)
 
