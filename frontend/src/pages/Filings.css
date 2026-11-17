@@ -1,0 +1,119 @@
+/* 기업·공시 목록 화면 (기업 목록, 기업별 공시 목록) 공통 스타일 */
+
+.page {
+  flex: 1;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.page h1 {
+  font-size: 28px;
+  letter-spacing: normal;
+  margin: 0 0 4px;
+}
+
+.page .sub {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.back {
+  display: inline-block;
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.back:hover {
+  color: var(--accent);
+}
+
+.status {
+  margin-top: 24px;
+}
+
+.status.error {
+  color: #e5484d;
+}
+
+.rows {
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-h);
+  text-decoration: none;
+}
+
+.row:hover {
+  background: var(--accent-bg);
+}
+
+.row-main,
+.row-side {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.row-side {
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 15px;
+}
+
+.tag {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--code-bg);
+  color: var(--text-h);
+  font-size: 12px;
+}
+
+/* 공시 행 + 오른쪽 버튼 (요약) */
+.row-with-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.row-with-action .row {
+  flex: 1;
+  min-width: 0;
+  border-bottom: none;
+}
+
+.summary-button {
+  flex-shrink: 0;
+  margin-right: 8px;
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--accent);
+  background: var(--bg);
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.summary-button:hover {
+  background: var(--accent-bg);
+}

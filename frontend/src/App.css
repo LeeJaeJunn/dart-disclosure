@@ -1,85 +1,50 @@
-.chat {
+/* 상단 바: 서비스 이름 + 메뉴. 스크롤해도 위에 고정된다. */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar-inner {
   display: flex;
-  flex-direction: column;
-  flex: 1;
-  width: 100%;
-  max-width: 760px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  max-width: 1126px;
   margin: 0 auto;
-  padding: 24px 16px;
+  padding: 12px 16px;
   box-sizing: border-box;
-  text-align: left;
 }
 
-.chat h1 {
-  font-size: 28px;
-  letter-spacing: normal;
-  margin: 0 0 16px;
+.site-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: var(--text-h);
+  text-decoration: none;
 }
 
-.messages {
-  flex: 1;
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.nav {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  overflow-y: auto;
+  gap: 4px;
 }
 
-.message {
-  max-width: 80%;
-  padding: 10px 14px;
-  border-radius: 12px;
-  white-space: pre-wrap;
-  line-height: 1.5;
+.nav a {
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 15px;
+  color: var(--text);
+  text-decoration: none;
 }
 
-.message.user {
-  align-self: flex-end;
+.nav a:hover {
+  color: var(--text-h);
+}
+
+.nav a.active {
   background: var(--accent-bg);
   color: var(--text-h);
-}
-
-.message.assistant {
-  align-self: flex-start;
-  background: var(--code-bg);
-  color: var(--text-h);
-}
-
-.message.error {
-  align-self: flex-start;
-  border: 1px solid #e5484d;
-  color: #e5484d;
-}
-
-.composer {
-  display: flex;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.composer input {
-  flex: 1;
-  padding: 10px 14px;
-  font: inherit;
-  color: var(--text-h);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-.composer button {
-  padding: 10px 18px;
-  font: inherit;
-  color: #fff;
-  background: var(--accent);
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.composer button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }

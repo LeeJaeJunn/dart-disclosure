@@ -15,7 +15,7 @@ from src.qa.schemas import RetrievedChunk
 ReportType = Literal["사업보고서", "반기보고서", "분기보고서"]
 
 # 공시를 보유한 기업 목록 (DB에 저장된 기업명 그대로). 공시를 추가하면 여기에도 추가한다.
-CorpName = Literal["삼성전자"]
+CorpName = Literal["삼성전자", "SK하이닉스"]
 
 
 class SearchDisclosuresArgs(BaseModel):
