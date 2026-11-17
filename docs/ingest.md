@@ -1,7 +1,7 @@
-# 공시 파싱 · 청킹 · 임베딩
+# 공시 파싱 · 청킹 · 임베딩 · 적재
 
-DART 공시 원문(`document.xml`)을 DB의 `filing_table`, `chunk` 행으로 바꾸는 과정을 설명한다.
-코드는 `backend/src/parsing/`, `backend/src/chunking/`, `backend/src/embedding/`에 있다.
+DART 공시 원문(`document.xml`)을 DB의 `filing`, `filing_table`, `chunk` 행으로 바꾸는 과정을 설명한다.
+코드는 `backend/src/parsing/`, `backend/src/chunking/`, `backend/src/embedding/`에 있고, 세 단계를 잇는 파이프라인과 DB 적재는 `backend/src/ingest/`에 있다.
 DB 테이블 컬럼 설명은 [AGENTS.md](../AGENTS.md)의 DB 구조를 참고한다.
 
 예시는 모두 삼성전자 사업보고서 (2023.12), 접수번호 `20240312000736`을 실제로 처리한 결과다.
@@ -9,43 +9,70 @@ DB 테이블 컬럼 설명은 [AGENTS.md](../AGENTS.md)의 DB 구조를 참고�
 ## 1. 전체 흐름
 
 ```
-원문 XML (.xml / .xml.gz)
-  │  python -m src.parsing
+Disclosure (list.json 한 건)
+  │  fetch_document()      DART 응답 ZIP을 풀어 본문 XML({접수번호}.xml) 문자열로
   ▼
-data/parsed/<접수번호>.json      ParsedDocument: 목차 트리 + 본문 블록 + 표
-  │  python -m src.chunking
+본문 XML
+  │  parse_document()
   ▼
-data/chunks/<접수번호>.json      ChunkedDocument: filing 정보 + 표 레코드 + 청크
+ParsedDocument             목차 트리 + 본문 블록 + 표
+  │  chunk_document()
+  ▼
+ChunkedDocument            filing 정보 + 표 레코드 + 청크
   │  embed_texts()
   ▼
-data/embeddings/<접수번호>.json  {text 해시: 1536차원 벡터}
-  │  (DB 적재: 이 문서 범위 밖)
+IngestResult               ChunkedDocument + {text 해시: 1536차원 벡터}
+  │  save_filing()         한 트랜잭션으로 공시 1건을 교체 저장 (5장)
   ▼
 filing / filing_table / chunk
 ```
 
-각 단계는 앞 단계의 JSON 파일만 읽는다. 그래서 단계를 하나씩 다시 실행할 수 있다. 예를 들어 청크 규칙만 바꿨다면 파싱을 다시 하지 않고 청킹부터 다시 돌리면 된다.
+`src/ingest/pipeline.py`의 `ingest_filing()`이 DB 적재 전까지를 한 번에 실행한다. 각 단계 함수의 리턴값을 다음 단계 함수에 넘긴다(`parse_document()` → `chunk_document()` → `embed_texts()`). 중간 결과는 파일로 저장하지 않고, 최종 결과만 DB에 저장한다.
+
+### 파일 (`src/ingest/`)
+
+| 파일 | 역할 |
+|---|---|
+| `__main__.py` | 실행 명령. `list.json`으로 공시 정보를 찾고 → `ingest_filing()` → `save_filing()` |
+| `pipeline.py` | `ingest_filing(disclosure, config)` → `IngestResult`. DART 원문 받기 → 파싱 → 청킹 → 임베딩. DB를 쓰지 않는다 |
+| `loader.py` | `save_filing(conn, result)`. `IngestResult`를 DB에 저장한다. 적재 SQL은 이 파일에만 둔다 (5장) |
+
+DART 호출은 모두 `src/dart/client.py`를 쓴다. `fetch_disclosures()`(`list.json`)는 `__main__.py`가, `fetch_document()`(`document.xml`)는 `pipeline.py`가 부른다.
+
+예전의 `python -m src.parsing`, `python -m src.chunking` 명령과 그 중간 결과 파일(`data/parsed/`, `data/chunks/`의 JSON), 임베딩 캐시 파일은 없앴다. 단계별로 따로 실행하지 않고 위 실행 명령 하나로 처리한다.
 
 ### 실행 명령 (`backend/`에서)
 
 ```bash
-# 1) 파싱
-uv run python -m src.parsing <원문.xml 또는 원문.xml.gz> [--out 경로]
-
-# 2) 청킹
-uv run python -m src.chunking data/parsed/20240312000736.json \
-  --rcept-no 20240312000736 \
-  --corp-code 00126380 \
-  --corp-name 삼성전자 \
-  --report-nm "사업보고서 (2023.12)" \
-  --rcept-dt 20240312 \
-  [--not-latest] [--target-chars 900] [--max-chars 1400] [--table-chars 1400] [--out 경로]
+uv run python -m src.ingest 20240312000736 --corp-code 00126380
 ```
 
-- `--report-nm`은 DART `list.json`의 `report_nm`을 그대로 넣는다. 여기서 보고서 종류와 기간을 뽑는다(3.1 참고).
-- `--not-latest`는 기재정정 전의 옛 공시일 때 붙인다. `filing.is_latest = false`가 된다.
-- 임베딩은 실행 명령이 없다. 적재 코드에서 `embed_texts()`를 불러 쓴다(4장).
-- `--out`을 주지 않으면 `backend/data/` 아래에 파일이 생긴다. 이 폴더는 커밋하지 않는다.
+- 접수번호와 기업 고유번호를 받는다. 접수번호 앞 8자리(접수일)와 고유번호로 `list.json`을 한 번 조회해 공시명·접수일 등을 찾는다. 못 찾으면 종료한다.
+- DB(`DATABASE_URL`)에 테이블이 이미 있어야 한다. 이 명령은 스키마를 만들지 않는다.
+- **같은 접수번호가 DB에 있으면 지우고 다시 넣는다.** 이때 그 공시의 `analysis`도 함께 지워진다(5장). 이미 분석 보고서가 있는 공시를 시험 삼아 다시 넣지 않는다.
+- Windows에서는 psycopg 비동기 연결 때문에 `SelectorEventLoop`로 실행한다(코드에 들어 있다).
+- 끝나면 다음처럼 한 줄을 출력한다. 임베딩 진행 상황(`[embed] 100/1669개` 등)도 중간에 출력한다.
+
+```
+[ingest] 삼성전자 사업보고서 (2023.12) (20240312000736): 표 511개, 청크 3150개 (임베딩 1669개)
+```
+
+- 시험으로 넣은 공시는 `DELETE FROM filing WHERE rcept_no = '<접수번호>';` 한 줄로 지운다. `filing_table`, `chunk`, `analysis`는 `ON DELETE CASCADE`로 함께 지워진다.
+
+### 코드에서 쓰기
+
+```python
+from src.ingest.pipeline import ingest_filing
+
+result = await ingest_filing(disclosure)  # disclosure: fetch_disclosures()가 돌려준 Disclosure
+# result.document.filing, result.document.tables, result.document.chunks → DB 행
+# result.embedding(chunk) → chunk.embedding 값 (embed=false면 None)
+```
+
+- `filing.is_latest`는 여기서 정하지 않는다. 적재할 때 DB에서 같은 기간 공시끼리 비교해 정한다(5장).
+- `config=ChunkingConfig(...)`로 청크 길이 설정을 바꿀 수 있다(3.10).
+- ZIP에는 본문 외에 감사보고서 등 첨부 파일이 함께 오지만 본문만 쓴다. 본문이 없으면 `ValueError`를 낸다.
+- 원문 XML은 DB에 보관하지 않는다. 파서·청커 규칙을 바꿔 다시 처리할 때는 DART에서 원문을 다시 받는다. 공시는 접수 후 바뀌지 않고 정정공시는 새 접수번호로 나오므로, 같은 접수번호로 받으면 같은 원문이 온다.
 
 ## 2. 파싱 (`src/parsing/`)
 
@@ -54,7 +81,6 @@ uv run python -m src.chunking data/parsed/20240312000736.json \
 | `document.py` | XML → 목차 트리. 표 앞뒤의 제목·단위·기준일·안내 문구를 표에 연결 |
 | `tables.py` | `<TABLE>` → 2차원 격자 → 헤더/본문 분리 → 셀 타입·단위 결정 |
 | `models.py` | 결과 스키마 (Pydantic) |
-| `__main__.py` | 명령행 실행 |
 
 현재 버전은 `PARSER_VERSION = "p6"`(`document.py`)이다. 파싱 결과가 달라지는 수정을 하면 이 값을 올린다.
 
@@ -250,15 +276,15 @@ unknown은 대부분 재무 외 섹션의 표다(임원, 주주, 계열회사 �
 |---|---|
 | `chunker.py` | `chunk_document(document, filing, config)` → `ChunkedDocument` |
 | `models.py` | `FilingInfo`, `ChunkingConfig`, `Chunk`, `TableRecord`, `ChunkedDocument` |
-| `__main__.py` | 명령행 실행 |
 
 ### 3.1 입력: `FilingInfo`
 
-명령행 인자로 받는 값과, 그 값에서 계산하는 값이 있다.
+파이프라인이 DART `list.json` 결과(`Disclosure`)에서 받는 값과, 그 값에서 계산하는 값이 있다.
 
 | 필드 | 출처 | 예 |
 |---|---|---|
-| `rcept_no`, `corp_code`, `corp_name`, `report_nm`, `rcept_dt`, `is_latest` | 인자 | `20240312000736`, `00126380`, `삼성전자`, `사업보고서 (2023.12)`, `20240312`, `true` |
+| `rcept_no`, `corp_code`, `corp_name`, `report_nm`, `rcept_dt` | `Disclosure` | `20240312000736`, `00126380`, `삼성전자`, `사업보고서 (2023.12)`, `20240312` |
+| `is_latest` | 기본값 `true`. 적재할 때 DB에서 다시 계산한다(5장) | `true` |
 | `report_type` | `report_nm`에 `사업보고서`, `반기보고서`, `분기보고서` 중 하나가 있으면 그 이름. 없으면 `report_nm` 그대로 | `사업보고서` |
 | `period` | `report_nm`의 `(YYYY.MM)`. 없으면 `rcept_dt`의 연·월 | `2023.12` |
 | `dart_url` | `https://dart.fss.or.kr/dsaf001/main.do?rcpNo=<rcept_no>` | |
@@ -486,7 +512,7 @@ unknown은 대부분 재무 외 섹션의 표다(임원, 주주, 계열회사 �
 from src.embedding.openai import content_hash, embed_texts
 
 texts = [chunk.text for chunk in doc.chunks if chunk.embed]
-vectors = await embed_texts(texts, Path("data/embeddings") / f"{doc.filing.rcept_no}.json")
+vectors = await embed_texts(texts)
 embedding = vectors[content_hash(chunk.text)] if chunk.embed else None
 ```
 
@@ -494,13 +520,28 @@ embedding = vectors[content_hash(chunk.text)] if chunk.embed else None
 - **모델:** `src/llm/models.py`의 `get_embeddings()`. 모델 이름은 `settings.embedding_model`(기본 `text-embedding-3-small`)이다. 질문을 임베딩하는 `qa/retriever.py`도 같은 함수를 쓰므로, 저장된 벡터와 질문 벡터의 모델이 항상 같다.
 - **차원:** 1536. DB `chunk.embedding vector(1536)`과 맞지 않으면 `ValueError`를 낸다. 모델을 바꾸면 DB 컬럼과 기존 벡터도 함께 바꿔야 한다.
 - **배치:** 100개씩 `aembed_documents()`로 보낸다.
-- **캐시:**
-  - 키는 `text`의 md5(`content_hash`)이다. 같은 내용의 청크는 한 번만 임베딩한다.
-  - 배치마다 파일에 저장한다(임시 파일에 쓴 뒤 교체). 중간에 실패해도 다시 실행하면 저장된 것은 건너뛰고 남은 것만 호출한다.
-  - 청크 규칙을 바꿔도 `text`가 같은 청크는 다시 호출하지 않는다.
-- **하지 않는 것:** DB 저장. 적재 코드가 `vectors[content_hash(chunk.text)]`로 꺼내 `chunk.embedding`에 넣는다.
+- **중복 제거:** 반환값의 키는 `text`의 md5(`content_hash`)이다. 같은 내용의 청크는 한 번만 임베딩한다.
+- **캐시 없음:** 결과를 파일로 저장하지 않는다. 다시 처리하면 전부 다시 호출하고, 중간에 실패하면 처음부터 다시 한다. 임베딩 모델이 저렴해 공시 1건을 다시 임베딩하는 비용이 작기 때문이다.
+- **하지 않는 것:** DB 저장. 파이프라인은 `IngestResult.embedding(chunk)`로 값을 넘기고, 적재 코드가 `chunk.embedding`에 넣는다.
 
-## 5. 설계 원칙 요약
+## 5. DB 적재 (`src/ingest/loader.py`)
+
+```python
+from src.db.session import pool
+from src.ingest.loader import save_filing
+
+async with pool.connection() as conn:
+    await save_filing(conn, result)  # result: ingest_filing()의 반환값
+```
+
+- **공시 1건 교체:** 한 트랜잭션 안에서 같은 `rcept_no`의 `filing`을 지우고 `filing`, `filing_table`, `chunk`를 다시 넣는다. 몇 번 실행해도 결과가 같고, 중간에 실패하면 아무것도 바뀌지 않는다.
+- **`analysis`도 지워진다:** `filing`을 지우면 `ON DELETE CASCADE`로 그 공시의 `analysis`가 함께 지워진다. 규칙이 바뀌어 다시 적재한 공시는 분석도 다시 만든다.
+- **값 변환:** 표의 `rows`는 `cells` 컬럼에 jsonb로 넣는다. `chunk.embedding`은 `IngestResult.embedding(chunk)`로 넣고, `embed=false`인 청크는 `NULL`이다.
+- **`is_latest`:** 정기보고서(사업·반기·분기보고서)는 저장 후 같은 기업·보고서 종류·기간의 공시 중 접수번호가 가장 큰 것만 `true`로 바꾼다. 접수번호는 접수일 + 순번이라 가장 큰 것이 가장 나중에 접수된 공시다. 정정공시를 넣으면 원래 공시가 `false`가 되고, 옛 공시를 나중에 넣어도 결과는 같다. 정기보고서가 아닌 공시는 `true`로 둔다.
+- **스키마:** 테이블을 만들거나 바꾸지 않는다. 컬럼은 [AGENTS.md](../AGENTS.md)의 DB 구조를 따른다.
+- 삼성전자 예시를 넣으면 `filing` 1행, `filing_table` 511행, `chunk` 3,150행(임베딩 1,669행)이 된다.
+
+## 6. 설계 원칙 요약
 
 1. **값은 원문 그대로 둔다.** 부호(`△`, 괄호), 손실/수익, 단위가 애매한 값의 해석은 LLM이 `notes`와 문맥을 보고 한다.
 2. **확실할 때만 채운다.** 단위, 연결/별도, 제목은 규칙에 맞을 때만 넣고, 아니면 `null`이나 `unknown`으로 둔다.
@@ -508,7 +549,7 @@ embedding = vectors[content_hash(chunk.text)] if chunk.embed else None
 4. **검색용과 근거용을 나눈다.** 검색은 `text`(머리말 포함, KV 문장), 답변 근거는 `raw`(원본 표, 원문 문단)를 쓴다.
 5. **다시 만들 수 있게 한다.** ID는 내용 기반 해시이고, 버전과 설정 해시가 데이터에 남는다.
 
-## 6. 알려진 한계
+## 7. 알려진 한계
 
 - `basis = unknown`인 표가 많다(삼성전자 511개 중 196개). 162개는 재무 외 섹션이지만, `financial` 태그 섹션에도 34개가 있다. 이런 표는 LLM이 앞 문맥이나 섹션 경로로 판단해야 한다.
 - 표 제목을 못 찾으면 `title = null`이다(삼성전자 511개 중 76개). 이때 청크의 문맥 줄에는 단위·연결 여부만 남는다.

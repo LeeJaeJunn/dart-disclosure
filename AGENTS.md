@@ -118,6 +118,7 @@ analysis                      # LLM 기업분석 보고서 (공시 1건 × 템�
 - 개발 서버: `uv run fastapi dev` → http://localhost:8000, API 문서는 `/docs`
 - 패키지 추가: `uv add <package>` (`pip install` 사용 금지)
 - 의존성 동기화: `uv sync`
+- 공시 1건 적재 (DART 원문 → 파싱·청킹·임베딩 → DB): `uv run python -m src.ingest <접수번호> --corp-code <기업 고유번호>` (자세한 내용은 [docs/ingest.md](docs/ingest.md))
 
 프론트엔드 (`frontend/`에서 실행)
 
