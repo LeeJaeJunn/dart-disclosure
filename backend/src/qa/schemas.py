@@ -28,6 +28,15 @@ class RetrievedChunk(BaseModel):
     dart_url: str               # DART 원문 링크 (meta에 없어서 rcept_no로 생성)
 
 
+class FilingRef(BaseModel):
+    """조회 가능한 공시 1건. 기간 필터를 정하거나 "공시가 없습니다" 안내에 쓴다."""
+
+    corp_name: str
+    report_nm: str              # 예: 분기보고서 (2026.09)
+    report_type: str            # 사업보고서 | 반기보고서 | 분기보고서
+    period: str                 # YYYY.MM
+
+
 class Source(BaseModel):
     """답변 근거 1건. 답변 본문의 [n]과 n이 대응한다."""
 

@@ -39,7 +39,13 @@ class SearchDisclosuresArgs(BaseModel):
     )
     period: str | None = Field(
         default=None,
-        description="보고 기간 YYYY.MM 형식. 사업보고서는 YYYY.12, 반기보고서는 YYYY.06, 1분기는 YYYY.03, 3분기는 YYYY.09. 질문에서 알 수 없으면 비운다.",
+        description="보고 기간 YYYY.MM 형식. 사업보고서는 YYYY.12, 반기보고서는 YYYY.06, 1분기는 YYYY.03, 3분기는 YYYY.09. "
+        "질문에 연도와 기간(연간, 상반기, 분기)이 함께 나올 때만 채운다. 질문에서 알 수 없거나 '최근'이면 비운다.",
+    )
+    latest: bool = Field(
+        default=False,
+        description="질문에 '최근', '최신', '요즘' 같은 단어가 직접 있을 때만 true. 이때 period는 채우지 않는다 (가장 최근 공시는 시스템이 고른다). "
+        "기간을 말하지 않은 질문은 false로 둔다 (예: 'HBM 사업 현황 알려줘' → false).",
     )
 
 
@@ -50,8 +56,9 @@ async def search_disclosures(
     corp_name: CorpName | None = None,
     report_type: ReportType | None = None,
     period: str | None = None,
+    latest: bool = False,
 ) -> list[RetrievedChunk]:
     """국내 상장기업의 DART 공시(사업보고서·반기보고서·분기보고서) 본문과 표에서 질문과 관련된 부분을 검색한다.
     기업의 재무 수치, 사업 내용, 위험 요인, 배당, 임원 등 공시에서 확인할 수 있는 내용을 물으면 호출한다."""
-    # report_type, period는 아직 검색 조건에 쓰지 않는다
-    return await search(query, corp_name=corp_name)
+    # LLM이 인자를 정하는 데만 쓴다. 실제 검색(latest 처리 포함)은 pipeline.ask()가 한다.
+    return await search(query, corp_name=corp_name, report_type=report_type, period=period)

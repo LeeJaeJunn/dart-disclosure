@@ -13,6 +13,12 @@
     corp_name 있음                          → 그 회사 안에서만 검색 (결과 0개면 "공시가 없습니다")
     인자 검증 실패 (목록 밖 회사명 등)       → "공시가 없습니다"
 
+기간 처리 (report_type: 공시 종류, period: YYYY.MM, latest: "최근" 질문)
+    latest + 회사 있음        → 그 회사의 가장 최근 공시(종류를 말했으면 그 종류 중)로 report_type, period를 정한다
+    report_type·period 있음   → 그 조건으로 검색. 맞는 공시가 없으면 검색 안 함, "해당 기간 공시가 없습니다"
+    기간 없음                 → 전체 기간에서 검색
+    latest + 회사 없음        → 기업마다 최근 공시가 달라 고를 수 없으므로 전체 기간에서 검색
+
 1단계는 tool 호출을 한 번만 처리한다 (검색 → 답변). 여러 번 검색하는 흐름은 LangGraph에서 다룬다.
 """
 
@@ -24,8 +30,8 @@ from pydantic import ValidationError
 from src.llm.models import get_chat_model
 from src.qa.answerer import answer
 from src.qa.prompts import ROUTER_SYSTEM
-from src.qa.retriever import search
-from src.qa.schemas import AskResponse
+from src.qa.retriever import list_filings, search
+from src.qa.schemas import AskResponse, FilingRef
 from src.qa.tools import CorpName, SearchDisclosuresArgs, search_disclosures
 
 def no_company_response(company: str | None, search_args: dict) -> AskResponse:
@@ -38,6 +44,29 @@ def no_company_response(company: str | None, search_args: dict) -> AskResponse:
         sources=[],
         search_args=search_args,
     )
+
+
+def no_period_response(args: SearchDisclosuresArgs, filings: list[FilingRef]) -> AskResponse:
+    """요청한 종류·기간의 공시가 없을 때의 답변. 조회 가능한 공시 목록을 함께 알려 준다. 검색하지 않는다."""
+    wanted = " ".join(v for v in (args.corp_name, args.report_type, args.period) if v)
+    if args.corp_name:
+        available = ", ".join(f.report_nm for f in filings)
+    else:
+        available = ", ".join(f"{f.corp_name} {f.report_nm}" for f in filings)
+    return AskResponse(
+        type="disclosure",
+        answer=f"{wanted} 공시가 없습니다. 현재 조회할 수 있는 공시: {available}",
+        sources=[],
+        search_args=args.model_dump(),
+    )
+
+
+def matches(filing: FilingRef, args: SearchDisclosuresArgs) -> bool:
+    """공시가 args의 종류·기간 조건에 맞는지. 조건이 비어 있으면 통과."""
+    return (not args.report_type or filing.report_type == args.report_type) and (
+        not args.period or filing.period == args.period
+    )
+
 
 async def ask(question: str, top_k: int = 5) -> AskResponse:
     """사용자 질문에 답한다. 공시 질문이면 검색 결과를 근거로 답한다."""
@@ -64,8 +93,26 @@ async def ask(question: str, top_k: int = 5) -> AskResponse:
     if args.mentioned_company and not args.corp_name:
         return no_company_response(args.mentioned_company, args.model_dump())
 
-    # corp_name이 있으면 그 회사 안에서만, 없으면 전체에서 검색한다
-    chunks = await search(args.query, top_k, corp_name=args.corp_name)
+    # 기간 조건이 있으면 DB의 공시 목록으로 확인한다 (LLM은 어떤 공시가 있는지 모른다)
+    if (args.latest and args.corp_name) or args.report_type or args.period:
+        filings = await list_filings(args.corp_name)
+        if args.corp_name and not filings:
+            return no_company_response(args.corp_name, args.model_dump())
+
+        # "최근": LLM이 추측한 기간 대신 실제 가장 최근 공시를 고른다
+        if args.latest and args.corp_name:
+            candidates = [f for f in filings if not args.report_type or f.report_type == args.report_type]
+            if candidates:
+                latest = candidates[0]
+                args = args.model_copy(update={"report_type": latest.report_type, "period": latest.period})
+
+        if not any(matches(f, args) for f in filings):
+            return no_period_response(args, filings)
+
+    # 값이 있는 조건(회사, 종류, 기간)으로만 좁혀서 검색한다
+    chunks = await search(
+        args.query, top_k, corp_name=args.corp_name, report_type=args.report_type, period=args.period
+    )
     if args.corp_name and not chunks:
         return no_company_response(args.corp_name, args.model_dump())
 
