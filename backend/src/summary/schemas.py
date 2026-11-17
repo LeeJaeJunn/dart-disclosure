@@ -1,7 +1,6 @@
 """공시 요약 조회 응답 스키마.
 
 analysis 테이블 구조를 그대로 내보내지 않고 화면에 필요한 필드만 고른다.
-(analysis 테이블은 재설계 예정. docs/discussion.md 1번)
 """
 
 from datetime import datetime

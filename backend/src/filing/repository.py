@@ -1,7 +1,7 @@
 """저장 공시 조회: 기업 목록, 기업별 공시 목록.
 
 조회 SQL은 이 파일에만 둔다. DB 구조가 바뀌면 이 파일만 고친다.
-기업 테이블이 없어 filing을 corp_code로 묶어 기업 목록을 만든다. (docs/discussion.md 7번)
+기업 테이블이 없어 filing을 corp_code로 묶어 기업 목록을 만든다.
 """
 
 from src.db.session import pool

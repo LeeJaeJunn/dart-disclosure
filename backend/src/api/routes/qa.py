@@ -12,7 +12,7 @@ router = APIRouter(prefix="/qa", tags=["qa"])
 @router.post("/ask")
 async def ask_question(req: AskRequest) -> AskResponse:
     """질문에 답한다. 공시 질문이면 공시를 검색해 근거와 함께 답한다."""
-    return await ask(req.question, req.top_k)
+    return await ask(req.question, req.top_k, req.history)
 
 
 # 검색 결과 확인용 (LLM 답변 없이 검색만)

@@ -81,7 +81,7 @@ function SummaryModal({ rceptNo, reportNm, onClose }: Props) {
 }
 
 // 본문의 인용 번호 [n]을 지운다.
-// 현재 데이터는 [n]이 근거 번호와 맞지 않아 그대로 두면 잘못된 근거를 가리킨다. (docs/discussion.md 1번)
+// 현재 데이터는 [n]이 근거 번호와 맞지 않아 그대로 두면 잘못된 근거를 가리킨다.
 function stripCitations(text: string): string {
   return text.replace(/\s*\[\d+\]/g, "");
 }

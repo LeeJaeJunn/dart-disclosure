@@ -5,11 +5,22 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class ChatTurn(BaseModel):
+    """이전 대화 1개 (사용자 질문 또는 답변 본문)."""
+
+    role: Literal["user", "assistant"]
+    content: str
+
+
 class AskRequest(BaseModel):
     """사용자 질문."""
 
     question: str = Field(min_length=1, description="사용자 질문")
     top_k: int = Field(default=5, ge=1, le=20, description="답변에 사용할 검색 결과 수")
+    history: list[ChatTurn] = Field(
+        default_factory=list,
+        description="이전 대화 (오래된 순). 1차 LLM이 '그럼 영업이익은?'처럼 이어지는 질문의 회사·기간을 판단하는 데만 쓴다",
+    )
 
 
 class RetrievedChunk(BaseModel):
@@ -61,5 +72,6 @@ class AskResponse(BaseModel):
     sources: list[Source] = Field(description="답변에 사용한 근거 목록")
     search_args: dict | None = Field(
         default=None,
-        description="LLM이 정한 검색 조건 (query, corp_name, report_type, period). 확인용",
+        description="검색에 쓴 조건 (query, mentioned_company, corp_name, report_type, period, latest). "
+        "'최근' 질문이면 report_type, period는 코드가 DB에서 고른 값이다. 확인용",
     )

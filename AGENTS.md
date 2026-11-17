@@ -20,14 +20,22 @@ Disclosure/
 │       ├── config.py   # pydantic-settings로 .env 로드
 │       ├── api/
 │       │   ├── main.py # 기능별 라우터를 api_router로 통합
-│       │   └── routes/ # 기능별 엔드포인트 (root.py, chat.py)
-│       ├── dart/       # DART OpenAPI 호출
+│       │   └── routes/ # 기능별 엔드포인트 (root, chat, qa, companies, filings)
+│       ├── db/         # 공통: DB 연결 풀 (session.py)
 │       ├── llm/        # 공통: LLM·임베딩 모델 생성 (models.py)
-│       └── qa/         # 질의응답 (질문 → 검색 → 답변)
+│       ├── dart/       # DART OpenAPI 호출
+│       ├── parsing/    # 공시 원문 XML 파싱
+│       ├── chunking/   # 청크 분할
+│       ├── embedding/  # 청크 임베딩
+│       ├── ingest/     # 공시 1건 적재 (DART 원문 → 파싱·청킹·임베딩 → DB)
+│       ├── qa/         # 질의응답 (질문 → 검색 → 답변)
+│       ├── filing/     # 저장된 기업·공시 목록 조회
+│       └── summary/    # 공시 요약(analysis) 조회
 ├── frontend/           # Vite + React 19 + TypeScript, pnpm
 └── docs/
     ├── design.md       # 서비스 설계 문서
-    └── discussion.md   # 팀 논의 사항 (미확정)
+    ├── ingest.md       # 공시 파싱·청킹·임베딩·적재
+    └── qa.md           # 질의응답
 ```
 
 ## DB 구조
@@ -63,7 +71,7 @@ filing_table                  # 공시 안의 표를 구조화한 데이터
 ├── as_of            text         [선택] 기준일
 ├── period_label     text         [선택] 당기 | 전기 등
 ├── basis            text         [필수] consolidated(연결) | separate(별도) | unknown
-├── basis_source     text         [선택] basis 판단 근거 (xbrl | preceding_heading)
+├── basis_source     text         [선택] basis 판단 근거 (xbrl | section_title | preceding_heading)
 ├── context_before   jsonb        [필수] 표 앞 문맥 문장 배열
 ├── notes            jsonb        [필수] 표 주석 배열
 ├── header           jsonb        [필수] 열 헤더 배열
@@ -105,7 +113,7 @@ analysis                      # LLM 기업분석 보고서 (공시 1건 × 템�
         └── diag            object        디버깅용 진단 정보
 ```
 
-알려진 문제 (팀원과 정리 예정, 자세한 내용과 선택지는 [docs/discussion.md](docs/discussion.md))
+알려진 문제
 
 - `analysis.sections[].sources[].chunk_id`가 `wiki:` 접두어를 갖고 있어 `chunk.chunk_id`와 바로 연결되지 않는다.
 - `analysis.sections[].sources[]`의 `rcept_dt`, `report_nm`이 null이다. 공시 정보는 `filing`에서 조인해 쓴다.
@@ -138,7 +146,6 @@ analysis                      # LLM 기업분석 보고서 (공시 1건 × 템�
   - 모델 이름은 코드에 하드코딩하지 않고 `settings.openai_model`, `settings.embedding_model`을 사용한다.
   - 프롬프트와 호출 로직은 각 기능 폴더(예: `src/qa/`)에 둔다. `src/llm/`에는 모델 생성만 둔다.
 - 공시 데이터에서 나온 모든 답변과 요약에는 근거(공시명, 공시일, 접수번호, 원문 위치, DART 링크)를 연결한다. 원문에서 확인한 사실과 LLM의 해석은 구분한다.
-- 팀원과 논의가 필요한 사항은 `docs/discussion.md`에 기존 항목 형식(상태, 현황, 선택지, 결론)으로 추가한다. 이 파일의 `결정됨`이 아닌 항목은 확정된 방향으로 보고 구현하지 않는다.
 
 ## 기술 방향 (계획, 미확정)
 

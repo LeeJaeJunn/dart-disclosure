@@ -10,8 +10,12 @@
 회사 처리 (mentioned_company: 질문에 나온 회사, corp_name: 보유 목록 중 해당 회사)
     mentioned_company 있음 + corp_name 없음 → 검색 안 함, "공시가 없습니다"
     둘 다 없음                              → 전체 검색
-    corp_name 있음                          → 그 회사 안에서만 검색 (결과 0개면 "공시가 없습니다")
-    인자 검증 실패 (목록 밖 회사명 등)       → "공시가 없습니다"
+    corp_name 있음                          → 그 회사 안에서만 검색 (DB에 그 회사 공시가 없으면 "공시가 없습니다")
+
+인자 검증 실패
+    corp_name이 목록 밖                     → "공시가 없습니다"
+    report_type이 사업·반기·분기보고서가 아님 → "조회할 수 없는 공시 종류입니다"
+    그 외                                   → 다시 질문해 달라고 안내
 
 기간 처리 (report_type: 공시 종류, period: YYYY.MM, latest: "최근" 질문)
     latest + 회사 있음        → 그 회사의 가장 최근 공시(종류를 말했으면 그 종류 중)로 report_type, period를 정한다
@@ -31,8 +35,11 @@ from src.llm.models import get_chat_model
 from src.qa.answerer import answer
 from src.qa.prompts import ROUTER_SYSTEM
 from src.qa.retriever import list_filings, search
-from src.qa.schemas import AskResponse, FilingRef
-from src.qa.tools import CorpName, SearchDisclosuresArgs, search_disclosures
+from src.qa.schemas import AskResponse, ChatTurn, FilingRef
+from src.qa.tools import CorpName, ReportType, SearchDisclosuresArgs, search_disclosures
+
+INVALID_ARGS = "질문을 이해하지 못했습니다. 회사명과 찾을 내용을 넣어 다시 질문해 주세요."
+
 
 def no_company_response(company: str | None, search_args: dict) -> AskResponse:
     """보유하지 않은 회사를 물었을 때의 답변. 검색하지 않는다."""
@@ -41,6 +48,17 @@ def no_company_response(company: str | None, search_args: dict) -> AskResponse:
     return AskResponse(
         type="disclosure",
         answer=f"{name}의 공시가 없습니다. 현재 조회할 수 있는 기업: {available}",
+        sources=[],
+        search_args=search_args,
+    )
+
+
+def unsupported_type_response(report_type: object, search_args: dict) -> AskResponse:
+    """조회할 수 없는 공시 종류(감사보고서 등)를 물었을 때의 답변. 검색하지 않는다."""
+    supported = ", ".join(get_args(ReportType))
+    return AskResponse(
+        type="disclosure",
+        answer=f"{report_type} 공시는 조회할 수 없습니다. 조회할 수 있는 공시 종류: {supported}",
         sources=[],
         search_args=search_args,
     )
@@ -68,11 +86,16 @@ def matches(filing: FilingRef, args: SearchDisclosuresArgs) -> bool:
     )
 
 
-async def ask(question: str, top_k: int = 5) -> AskResponse:
-    """사용자 질문에 답한다. 공시 질문이면 검색 결과를 근거로 답한다."""
+async def ask(question: str, top_k: int = 5, history: list[ChatTurn] | None = None) -> AskResponse:
+    """사용자 질문에 답한다. 공시 질문이면 검색 결과를 근거로 답한다.
+
+    history(이전 대화)는 1차 LLM에만 넘긴다. 이어지는 질문의 회사·기간을 판단하는 데 쓰고,
+    2차 LLM(답변)은 이번 검색 근거만 보게 해서 이전 답변 내용을 근거처럼 쓰지 않게 한다.
+    """
     router = get_chat_model().bind_tools([search_disclosures])
     messages = [
         ("system", ROUTER_SYSTEM.format(today=date.today().isoformat())),
+        *[(turn.role, turn.content) for turn in history or []],
         ("user", question),
     ]
     decision = await router.ainvoke(messages)
@@ -85,9 +108,14 @@ async def ask(question: str, top_k: int = 5) -> AskResponse:
     raw_args = decision.tool_calls[0]["args"]
     try:
         args = SearchDisclosuresArgs(**raw_args)
-    except ValidationError:
-        # 목록 밖 회사명 등 잘못된 인자 → 보유하지 않은 회사로 처리
-        return no_company_response(raw_args.get("mentioned_company") or raw_args.get("corp_name"), raw_args)
+    except ValidationError as error:
+        # 어느 인자가 틀렸는지에 따라 안내한다
+        failed = {e["loc"][0] for e in error.errors() if e["loc"]}
+        if "corp_name" in failed:  # 목록 밖 회사명
+            return no_company_response(raw_args.get("mentioned_company") or raw_args.get("corp_name"), raw_args)
+        if "report_type" in failed:  # 사업·반기·분기보고서가 아닌 공시 (감사보고서 등)
+            return unsupported_type_response(raw_args.get("report_type"), raw_args)
+        return AskResponse(type="disclosure", answer=INVALID_ARGS, sources=[], search_args=raw_args)
 
     # 질문에 회사가 있는데 보유 목록에 없음 → 검색하지 않는다
     if args.mentioned_company and not args.corp_name:
@@ -113,7 +141,9 @@ async def ask(question: str, top_k: int = 5) -> AskResponse:
     chunks = await search(
         args.query, top_k, corp_name=args.corp_name, report_type=args.report_type, period=args.period
     )
-    if args.corp_name and not chunks:
+    # 결과 0개: 회사 목록(CorpName)에는 있지만 DB에 공시가 없는 회사면 "공시가 없습니다".
+    # 공시는 있는데 결과가 없으면 answer()가 "근거를 찾지 못했습니다"로 답한다.
+    if args.corp_name and not chunks and not await list_filings(args.corp_name):
         return no_company_response(args.corp_name, args.model_dump())
 
     # 답변은 LLM이 정리한 query가 아니라 사용자의 원래 질문으로 만든다.

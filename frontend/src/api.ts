@@ -53,9 +53,16 @@ export type FilingSummary = {
 };
 
 // 질의응답 (POST /qa/ask)
+// 이전 대화 1개. 질문 또는 답변 본문
+export type ChatTurn = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 export type AskRequest = {
   question: string;
   top_k?: number; // 생략하면 5
+  history?: ChatTurn[]; // 이전 대화 (오래된 순). 이어지는 질문의 회사·기간 판단에 쓴다
 };
 
 // 답변 근거 1건. 답변 본문의 [n]과 n이 대응한다.
