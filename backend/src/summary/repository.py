@@ -1,10 +1,32 @@
-"""공시 요약 조회: analysis 테이블에서 공시 1건의 요약을 읽는다.
+"""공시 요약 조회·저장: analysis 테이블.
 
-조회 SQL과 analysis JSON 해석은 이 파일에만 둔다. analysis 구조가 바뀌면 이 파일만 고친다.
+- get_summary(): 공시 1건의 요약을 화면용으로 읽는다.
+- save_analysis(): builder가 만든 요약을 저장한다 (공시 적재 때).
+
+analysis SQL과 JSON 해석은 이 파일에만 둔다. analysis 구조가 바뀌면 이 파일만 고친다.
 """
 
+from psycopg import AsyncConnection
+from psycopg.types.json import Jsonb
+
 from src.db.session import pool
-from src.summary.schemas import FilingSummary, SummarySection, SummarySource
+from src.summary.schemas import Analysis, FilingSummary, SummarySection, SummarySource
+
+# 같은 공시·템플릿이 이미 있으면 새 내용으로 바꾼다.
+SAVE_SQL = """
+INSERT INTO analysis (rcept_no, template, title, version, model, parser_version, chunker_version, usage, sections)
+VALUES (%(rcept_no)s, %(template)s, %(title)s, %(version)s, %(model)s, %(parser_version)s, %(chunker_version)s,
+        %(usage)s, %(sections)s)
+ON CONFLICT (rcept_no, template) DO UPDATE SET
+    title = EXCLUDED.title,
+    version = EXCLUDED.version,
+    model = EXCLUDED.model,
+    parser_version = EXCLUDED.parser_version,
+    chunker_version = EXCLUDED.chunker_version,
+    usage = EXCLUDED.usage,
+    sections = EXCLUDED.sections,
+    created_at = now()
+"""
 
 # 공시 정보(기업명, 공시명, 공시일, DART 링크)는 filing에서 조인한다.
 # (analysis.sections[].sources[]의 rcept_dt, report_nm은 null이다)
@@ -48,3 +70,17 @@ async def get_summary(rcept_no: str) -> FilingSummary | None:
 
     sections = [_to_section(s) for s in row.pop("sections") if s.get("status") == "done"]
     return FilingSummary(**row, sections=sections)
+
+
+async def save_analysis(conn: AsyncConnection, analysis: Analysis) -> None:
+    """요약 1건을 저장한다. filing에 같은 rcept_no가 있어야 한다 (FK)."""
+    sections = [section.model_dump(exclude_none=True) for section in analysis.sections]  # error는 실패한 섹션에만
+    async with conn.transaction():
+        await conn.execute(
+            SAVE_SQL,
+            {
+                **analysis.model_dump(exclude={"usage", "sections"}),
+                "usage": Jsonb(analysis.usage),
+                "sections": Jsonb(sections),
+            },
+        )

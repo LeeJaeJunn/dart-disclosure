@@ -30,7 +30,7 @@ Disclosure/
 │       ├── ingest/     # 공시 1건 적재 (DART 원문 → 파싱·청킹·임베딩 → DB)
 │       ├── qa/         # 질의응답 (질문 → 검색 → 답변)
 │       ├── filing/     # 저장된 기업·공시 목록 조회
-│       └── summary/    # 공시 요약(analysis) 조회
+│       └── summary/    # 공시 요약(analysis) 생성·조회 (공시 적재 때 생성)
 ├── frontend/           # Vite + React 19 + TypeScript, pnpm
 └── docs/
     ├── design.md       # 서비스 설계 문서
@@ -126,7 +126,8 @@ analysis                      # LLM 기업분석 보고서 (공시 1건 × 템�
 - 개발 서버: `uv run fastapi dev` → http://localhost:8000, API 문서는 `/docs`
 - 패키지 추가: `uv add <package>` (`pip install` 사용 금지)
 - 의존성 동기화: `uv sync`
-- 공시 1건 적재 (DART 원문 → 파싱·청킹·임베딩 → DB): `uv run python -m src.ingest <접수번호> --corp-code <기업 고유번호>` (자세한 내용은 [docs/ingest.md](docs/ingest.md))
+- 공시 1건 적재 (DART 원문 → 파싱·청킹·임베딩 → DB → 기업분석 보고서 생성): `uv run python -m src.ingest <접수번호> --corp-code <기업 고유번호>` (자세한 내용은 [docs/ingest.md](docs/ingest.md))
+  - 보고서(analysis) 생성은 LLM을 섹션마다 호출한다(공시 1건에 7~8회, 약 1분). 적재만 시험할 때는 `--no-summary`를 붙인다.
 
 프론트엔드 (`frontend/`에서 실행)
 
