@@ -30,7 +30,7 @@ class RetrievedChunk(BaseModel):
     kind: str                   # text | table | table_kv
     section_path: str           # 원문 위치 (목차 경로)
     raw: str                    # 원문 텍스트
-    score: float                # 유사도 (1 - 코사인 거리, 클수록 비슷함)
+    score: float                # 클수록 관련 높음. hybrid는 RRF 점수, dense는 코사인 유사도, bm25는 BM25 점수
     # 근거 정보 (chunk.rcept_no, chunk.meta에서 읽음)
     rcept_no: str               # 접수번호
     corp_name: str              # 기업명
