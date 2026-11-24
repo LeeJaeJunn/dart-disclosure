@@ -5,7 +5,7 @@
      ▼
     1차 LLM (search_disclosures tool 연결)
      ├─ tool 호출 없음 → 1차 응답을 그대로 답변                   (type=general)
-     └─ tool 호출 있음 → 검색(LLM이 정한 query) → answerer로 답변   (type=disclosure)
+     └─ tool 호출 있음 → 검색(LLM이 정한 query) → 표 확장 → answerer로 답변   (type=disclosure)
 
 회사 처리 (mentioned_company: 질문에 나온 회사, corp_name: 보유 목록 중 해당 회사)
     mentioned_company 있음 + corp_name 없음 → 검색 안 함, "공시가 없습니다"
@@ -33,6 +33,7 @@ from pydantic import ValidationError
 
 from src.llm.models import get_chat_model
 from src.qa.answerer import answer
+from src.qa.expander import expand_tables
 from src.qa.prompts import ROUTER_SYSTEM
 from src.qa.retriever import list_filings, search
 from src.qa.schemas import AskResponse, ChatTurn, FilingRef
@@ -145,6 +146,9 @@ async def ask(question: str, top_k: int = 5, history: list[ChatTurn] | None = No
     # 공시는 있는데 결과가 없으면 answer()가 "근거를 찾지 못했습니다"로 답한다.
     if args.corp_name and not chunks and not await list_filings(args.corp_name):
         return no_company_response(args.corp_name, args.model_dump())
+
+    # 표 청크(잘린 조각일 수 있음)를 원본 표 전체로 바꾼다 (작은 표만, 같은 표는 하나로)
+    chunks = await expand_tables(chunks)
 
     # 답변은 LLM이 정리한 query가 아니라 사용자의 원래 질문으로 만든다.
     response = await answer(question, chunks)

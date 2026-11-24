@@ -27,16 +27,18 @@ class RetrievedChunk(BaseModel):
     """검색 결과 1건. retriever가 만들고 answerer가 사용한다 (API 응답에는 직접 나가지 않음)."""
 
     chunk_id: str
-    kind: str                   # text | table | table_kv
+    kind: str                   # text | table | table_kv (원본 표로 바꿔도 검색된 청크의 값 그대로)
     section_path: str           # 원문 위치 (목차 경로)
     raw: str                    # 원문 텍스트
-    score: float                # 유사도 (1 - 코사인 거리, 클수록 비슷함)
+    score: float                # 클수록 관련 높음. hybrid는 RRF 점수, dense는 코사인 유사도, bm25는 BM25 점수
     # 근거 정보 (chunk.rcept_no, chunk.meta에서 읽음)
     rcept_no: str               # 접수번호
     corp_name: str              # 기업명
     report_nm: str              # 공시명
     rcept_dt: str               # 공시일 (YYYYMMDD)
     dart_url: str               # DART 원문 링크 (meta에 없어서 rcept_no로 생성)
+    table_id: str | None = None  # 표 청크(table, table_kv)일 때 원본 표 ID (filing_table)
+    expanded: bool = False      # True면 raw가 검색된 조각이 아니라 원본 표 전체 (expander.expand_tables)
 
 
 class FilingRef(BaseModel):

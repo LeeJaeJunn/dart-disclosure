@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from src.qa.pipeline import ask
-from src.qa.retriever import search
+from src.qa.retriever import SearchMode, search
 from src.qa.schemas import AskRequest, AskResponse, RetrievedChunk
 
 router = APIRouter(prefix="/qa", tags=["qa"])
@@ -20,5 +20,6 @@ async def ask_question(req: AskRequest) -> AskResponse:
 async def search_chunks(
     question: Annotated[str, Query(min_length=1, description="검색할 질문")],
     k: Annotated[int, Query(ge=1, le=20, description="가져올 결과 수")] = 5,
+    mode: Annotated[SearchMode, Query(description="hybrid: 임베딩+BM25 / dense: 임베딩만 / bm25: BM25만")] = "hybrid",
 ) -> list[RetrievedChunk]:
-    return await search(question, k)
+    return await search(question, k, mode=mode)

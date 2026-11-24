@@ -15,6 +15,7 @@ Disclosure/
 ├── backend/            # FastAPI (Python 3.14, uv)
 │   ├── pyproject.toml
 │   ├── .env            # 비밀값. 커밋 금지 (.env.example 참고)
+│   ├── sql/            # 덤프 이후 추가한 스키마 SQL (bm25.sql: BM25 키워드 검색 컬럼)
 │   └── src/
 │       ├── main.py     # FastAPI app (entrypoint: src.main:app)
 │       ├── config.py   # pydantic-settings로 .env 로드
@@ -42,6 +43,7 @@ Disclosure/
 
 PostgreSQL 18 + pgvector. 루트의 `docker-compose.yml`로 실행한다. (`localhost:5433`, DB·User·Password 모두 `disclosure`)
 현재 스키마는 팀원이 공유한 덤프(`disclosure-*.dump`)로 복원한 것이며, 마이그레이션 코드는 아직 없다.
+덤프 이후 추가한 스키마는 `backend/sql/`의 SQL 파일로 DB마다 한 번 실행한다 (명령어 참고).
 모든 테이블은 `rcept_no`(접수번호)로 `filing`에 연결되고, 공시를 삭제하면 하위 데이터도 함께 삭제된다(`ON DELETE CASCADE`).
 
 ```
@@ -88,7 +90,10 @@ chunk                         # RAG 검색 단위 (청크 + 임베딩)
 ├── raw              text         [필수] 원문 텍스트
 ├── meta             jsonb        [필수] 필터용 메타데이터 (corp_code, corp_name, report_nm, report_type,
 │                                        period, year, rcept_dt, section_title, section_level, tags 등)
-└── embedding        vector(1536) [선택] 임베딩. section은 전부, table은 대부분 비어 있음
+├── embedding        vector(1536) [선택] 임베딩. section은 전부, table은 대부분 비어 있음
+└── bm25             tsvector     [자동] BM25 키워드 검색용 토큰 ('토큰':나온 위치). text, table_kv만 값이 있음
+                                         DB가 text로부터 자동 계산한다 (generated column, backend/sql/bm25.sql).
+                                         적재 코드는 이 컬럼을 넣지 않는다
 
 analysis                      # LLM 기업분석 보고서 (공시 1건 × 템플릿 1개 = 1행)
 ├── rcept_no         text         [필수] PK, FK → filing
@@ -128,6 +133,11 @@ analysis                      # LLM 기업분석 보고서 (공시 1건 × 템�
 - 의존성 동기화: `uv sync`
 - 공시 1건 적재 (DART 원문 → 파싱·청킹·임베딩 → DB → 기업분석 보고서 생성): `uv run python -m src.ingest <접수번호> --corp-code <기업 고유번호>` (자세한 내용은 [docs/ingest.md](docs/ingest.md))
   - 보고서(analysis) 생성은 LLM을 섹션마다 호출한다(공시 1건에 7~8회, 약 1분). 적재만 시험할 때는 `--no-summary`를 붙인다.
+
+DB 스키마 추가 (저장소 루트에서, DB마다 한 번. 여러 번 실행해도 된다)
+
+- BM25 키워드 검색 컬럼: `docker compose exec -T db psql -U disclosure -d disclosure < backend/sql/bm25.sql`
+  - 실행하지 않으면 질의응답 검색이 `bm25` 컬럼이 없다는 오류로 실패한다.
 
 프론트엔드 (`frontend/`에서 실행)
 
