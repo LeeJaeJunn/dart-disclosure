@@ -2,6 +2,9 @@
 
 1차 LLM은 이 tool의 이름·설명·인자 설명을 보고 호출 여부와 인자 값을 정한다.
 인자 설명이 곧 LLM에게 주는 안내문이므로, 형식과 예시를 구체적으로 적는다.
+
+tool 인자는 검색 대상 목록(targets)이다. 보통 1개, 회사나 공시(기간)가 다른 대상을 묻거나 비교하면
+대상마다 하나씩 넣는다 (최대 MAX_TARGETS개). pipeline이 대상마다 따로 확인·검색한다.
 """
 
 from typing import Literal
@@ -9,17 +12,16 @@ from typing import Literal
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
-from src.qa.retriever import search
-from src.qa.schemas import RetrievedChunk
-
 ReportType = Literal["사업보고서", "반기보고서", "분기보고서"]
 
 # 공시를 보유한 기업 목록 (DB에 저장된 기업명 그대로). 공시를 추가하면 여기에도 추가한다.
 CorpName = Literal["삼성전자", "SK하이닉스"]
 
+MAX_TARGETS = 2  # 한 질문에서 검색하는 대상 수 상한 (넘으면 앞의 대상만 검색하고 안내)
 
-class SearchDisclosuresArgs(BaseModel):
-    """search_disclosures의 인자. pipeline에서 LLM이 채운 값을 검증할 때도 쓴다."""
+
+class SearchTarget(BaseModel):
+    """검색 대상 1개 (회사·공시 종류·기간·찾을 내용). pipeline에서 LLM이 채운 값을 검증할 때도 쓴다."""
 
     query: str = Field(
         description="공시에서 찾을 내용만 짧게 쓴다. 회사명과 기간은 넣지 않는다. 예: 영업이익, 배당금, 반도체 사업 위험 요인",
@@ -49,16 +51,18 @@ class SearchDisclosuresArgs(BaseModel):
     )
 
 
+class SearchDisclosuresArgs(BaseModel):
+    """search_disclosures의 인자."""
+
+    targets: list[SearchTarget] = Field(
+        description="검색할 대상 목록. 보통 1개. 회사나 공시(기간)가 다른 대상을 묻거나 비교하면 대상마다 하나씩 "
+        f"(최대 {MAX_TARGETS}개). 같은 회사·같은 기간의 여러 내용은 대상 1개에 함께 쓴다.",
+    )
+
+
 @tool(args_schema=SearchDisclosuresArgs)
-async def search_disclosures(
-    query: str,
-    mentioned_company: str | None = None,
-    corp_name: CorpName | None = None,
-    report_type: ReportType | None = None,
-    period: str | None = None,
-    latest: bool = False,
-) -> list[RetrievedChunk]:
+async def search_disclosures(targets: list[SearchTarget]) -> list:
     """국내 상장기업의 DART 공시(사업보고서·반기보고서·분기보고서) 본문과 표에서 질문과 관련된 부분을 검색한다.
     기업의 재무 수치, 사업 내용, 위험 요인, 배당, 임원 등 공시에서 확인할 수 있는 내용을 물으면 호출한다."""
-    # LLM이 인자를 정하는 데만 쓴다. 실제 검색(latest 처리 포함)은 pipeline.ask()가 한다.
-    return await search(query, corp_name=corp_name, report_type=report_type, period=period)
+    # LLM이 인자를 정하는 데만 쓴다. 실제 확인·검색은 pipeline.ask()가 대상마다 한다.
+    return []

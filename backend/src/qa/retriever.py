@@ -138,12 +138,14 @@ async def search(
     report_type: str | None = None,
     period: str | None = None,
     mode: SearchMode = "hybrid",
+    guaranteed: int = GUARANTEED,
 ) -> list[RetrievedChunk]:
     """질문에 맞는 청크를 k개 찾는다 (관련 높은 순).
     corp_name, report_type, period 중 값이 있는 조건으로만 좁혀서 찾는다.
 
     mode
-        hybrid  임베딩 검색과 BM25 검색을 각각 PREFETCH개씩 하고 _merge()로 합친다 (기본)
+        hybrid  임베딩 검색과 BM25 검색을 각각 PREFETCH개씩 하고 _merge()로 합친다 (기본).
+                guaranteed칸은 두 검색의 최상위 결과로 먼저 채운다 (검색 대상이 2개면 pipeline이 k=3, guaranteed=2로 부른다)
         dense   임베딩 검색만, bm25  BM25 검색만 (비교 실험·디버깅용)
     """
     conditions = {"corp_name": corp_name, "report_type": report_type, "period": period}
@@ -158,7 +160,7 @@ async def search(
             _dense(question, PREFETCH, meta_filter),
             _bm25(question, PREFETCH, meta_filter),
         )
-        rows = _merge([dense, bm25], k)
+        rows = _merge([dense, bm25], k, guaranteed)
 
     return [RetrievedChunk(**row, dart_url=dart_url(row["rcept_no"])) for row in rows]
 
@@ -187,10 +189,10 @@ async def _bm25(question: str, k: int, meta_filter: Jsonb) -> list[dict[str, Any
         return await cur.fetchall()
 
 
-def _merge(rankings: list[list[dict[str, Any]]], k: int) -> list[dict[str, Any]]:
+def _merge(rankings: list[list[dict[str, Any]]], k: int, guaranteed: int = GUARANTEED) -> list[dict[str, Any]]:
     """두 검색 결과를 합쳐 서로 다른 청크 k개.
 
-    1. 검색을 번갈아 1위부터 내려가며 서로 다른 청크 GUARANTEED개를 넣는다.
+    1. 검색을 번갈아 1위부터 내려가며 서로 다른 청크 guaranteed개를 넣는다.
        이미 넣은 청크(두 검색 모두 상위)는 건너뛰고 다음 순위로 채운다.
        예: 임베딩 1위 = BM25 2위면 → 임베딩 1위, BM25 1위, 임베딩 2위, 임베딩 3위
     2. 남은 칸은 RRF 순서로 채운다 (대부분 두 검색에 모두 걸린 청크).
@@ -199,7 +201,7 @@ def _merge(rankings: list[list[dict[str, Any]]], k: int) -> list[dict[str, Any]]
     by_rrf = _rrf(rankings, sum(map(len, rankings)))
     rows = {row["chunk_id"]: row for row in by_rrf}  # score가 RRF 점수로 바뀐 행
     picked: list[str] = []
-    limit = min(GUARANTEED, k)
+    limit = min(guaranteed, k)
     depth = 0
     while len(picked) < limit and any(depth < len(ranking) for ranking in rankings):
         for ranking in rankings:
