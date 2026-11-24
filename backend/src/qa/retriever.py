@@ -1,7 +1,8 @@
-"""검색: 질문 → 임베딩 검색 + BM25 키워드 검색 → RRF로 합침 → RetrievedChunk 목록.
+"""검색: 질문 → 임베딩 검색 + BM25 키워드 검색 → 합침 → RetrievedChunk 목록.
 
     _dense()  임베딩 검색. 뜻이 비슷한 청크 (pgvector 코사인 거리)
     _bm25()   키워드 검색. 질문의 단어가 들어 있는 청크 (chunk.bm25, backend/sql/bm25.sql)
+    _merge()  두 검색의 최상위 결과로 GUARANTEED칸을 먼저 채우고, 남은 칸은 _rrf() 순서로 채운다
     _rrf()    두 검색의 순위만 보고 합친다. 점수는 단위가 달라 비교하지 않는다
 
 회사·공시 종류·기간 필터는 두 검색에 똑같이 건다. 리랭커는 없다.
@@ -21,8 +22,11 @@ from src.qa.schemas import FilingRef, RetrievedChunk
 
 SearchMode = Literal["hybrid", "dense", "bm25"]  # dense, bm25는 비교 실험·디버깅용
 
-PREFETCH = 50  # hybrid에서 각 검색이 RRF에 넘기는 청크 수
+PREFETCH = 50  # hybrid에서 각 검색이 가져오는 청크 수 (20개보다 검색어 16개 비교에서 조금 나음)
 RRF_K = 60  # RRF 점수 = Σ 1 / (RRF_K + 순위)
+# 두 검색을 번갈아 내려가며 먼저 채우는 칸 수 (임베딩 1위, BM25 1위, 임베딩 2위, BM25 2위 …).
+# RRF만 쓰면 양쪽에 깊은 순위로 걸린 청크가 한쪽 1위(정답인 경우가 많음)를 밀어낸다.
+GUARANTEED = 4
 
 # BM25 설정 (프로토타입 dart_rag/index/bm25.py와 같은 공식)
 BM25_K1 = 1.2  # 같은 단어가 여러 번 나올 때 점수가 오르는 정도 (클수록 많이 오름)
@@ -139,7 +143,7 @@ async def search(
     corp_name, report_type, period 중 값이 있는 조건으로만 좁혀서 찾는다.
 
     mode
-        hybrid  임베딩 검색과 BM25 검색을 각각 PREFETCH개씩 하고 RRF로 합친다 (기본)
+        hybrid  임베딩 검색과 BM25 검색을 각각 PREFETCH개씩 하고 _merge()로 합친다 (기본)
         dense   임베딩 검색만, bm25  BM25 검색만 (비교 실험·디버깅용)
     """
     conditions = {"corp_name": corp_name, "report_type": report_type, "period": period}
@@ -154,7 +158,7 @@ async def search(
             _dense(question, PREFETCH, meta_filter),
             _bm25(question, PREFETCH, meta_filter),
         )
-        rows = _rrf([dense, bm25], k)
+        rows = _merge([dense, bm25], k)
 
     return [RetrievedChunk(**row, dart_url=dart_url(row["rcept_no"])) for row in rows]
 
@@ -181,6 +185,33 @@ async def _bm25(question: str, k: int, meta_filter: Jsonb) -> list[dict[str, Any
     async with pool.connection() as conn:
         cur = await conn.execute(BM25_SQL, params)
         return await cur.fetchall()
+
+
+def _merge(rankings: list[list[dict[str, Any]]], k: int) -> list[dict[str, Any]]:
+    """두 검색 결과를 합쳐 서로 다른 청크 k개.
+
+    1. 검색을 번갈아 1위부터 내려가며 서로 다른 청크 GUARANTEED개를 넣는다.
+       이미 넣은 청크(두 검색 모두 상위)는 건너뛰고 다음 순위로 채운다.
+       예: 임베딩 1위 = BM25 2위면 → 임베딩 1위, BM25 1위, 임베딩 2위, 임베딩 3위
+    2. 남은 칸은 RRF 순서로 채운다 (대부분 두 검색에 모두 걸린 청크).
+    score는 모두 RRF 점수다 (순서는 1번 규칙이 우선이라 점수순이 아닐 수 있다).
+    """
+    by_rrf = _rrf(rankings, sum(map(len, rankings)))
+    rows = {row["chunk_id"]: row for row in by_rrf}  # score가 RRF 점수로 바뀐 행
+    picked: list[str] = []
+    limit = min(GUARANTEED, k)
+    depth = 0
+    while len(picked) < limit and any(depth < len(ranking) for ranking in rankings):
+        for ranking in rankings:
+            if len(picked) < limit and depth < len(ranking) and ranking[depth]["chunk_id"] not in picked:
+                picked.append(ranking[depth]["chunk_id"])
+        depth += 1
+    for row in by_rrf:
+        if len(picked) >= k:
+            break
+        if row["chunk_id"] not in picked:
+            picked.append(row["chunk_id"])
+    return [rows[chunk_id] for chunk_id in picked]
 
 
 def _rrf(rankings: list[list[dict[str, Any]]], k: int) -> list[dict[str, Any]]:
