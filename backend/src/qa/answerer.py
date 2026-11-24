@@ -13,7 +13,8 @@ from src.qa.schemas import AskResponse, RetrievedChunk, Source
 
 NO_EVIDENCE = "질문과 관련된 공시 근거를 찾지 못했습니다. 회사명이나 기간을 넣어 다시 질문해 주세요."
 
-MAX_CHUNK_CHARS = 2000      # 근거 1건이 프롬프트에 들어가는 최대 길이 (긴 표 청크 대비)
+MAX_CHUNK_CHARS = 2000      # 근거 1건이 프롬프트에 들어가는 최대 길이 (긴 표 청크 대비).
+                            # 원본 표로 바꾼 근거(expanded)는 expander.TABLE_CHARS 이하라 자르지 않는다
 QUOTE_CHARS = 300           # 응답의 근거 발췌(quote) 길이
 
 CITATION_RE = re.compile(r"\[(\d{1,2})\]")
@@ -23,7 +24,7 @@ def build_context(chunks: list[RetrievedChunk]) -> str:
     """검색 결과를 [1]..[n] 번호가 붙은 근거 목록 문자열로 만든다."""
     items = []
     for n, c in enumerate(chunks, 1):
-        raw = c.raw if len(c.raw) <= MAX_CHUNK_CHARS else c.raw[:MAX_CHUNK_CHARS] + "\n...(중략)"
+        raw = c.raw if c.expanded or len(c.raw) <= MAX_CHUNK_CHARS else c.raw[:MAX_CHUNK_CHARS] + "\n...(중략)"
         items.append(CONTEXT_ITEM.format(
             n=n, corp_name=c.corp_name, report_nm=c.report_nm, section_path=c.section_path, raw=raw,
         ))

@@ -4,7 +4,8 @@
     _bm25()   키워드 검색. 질문의 단어가 들어 있는 청크 (chunk.bm25, backend/sql/bm25.sql)
     _rrf()    두 검색의 순위만 보고 합친다. 점수는 단위가 달라 비교하지 않는다
 
-회사·공시 종류·기간 필터는 두 검색에 똑같이 건다. 리랭커와 주변 청크 붙이기는 없다.
+회사·공시 종류·기간 필터는 두 검색에 똑같이 건다. 리랭커는 없다.
+표 청크를 원본 표로 바꾸는 일은 expander.py가 하고, 원본 표 조회(get_tables)만 여기서 한다.
 검색 SQL은 이 파일에만 둔다. DB 구조가 바뀌면 이 파일만 고친다.
 """
 
@@ -31,7 +32,7 @@ COMMON_RATIO = 0.5  # 청크의 이 비율보다 많이 나오는 토큰은 후�
 
 # 근거 정보(기업명, 공시명, 공시일)는 chunk.meta에서 읽는다.
 CHUNK_COLUMNS = """
-    c.chunk_id, c.kind, c.section_path, c.raw, c.rcept_no,
+    c.chunk_id, c.kind, c.section_path, c.raw, c.rcept_no, c.table_id,
     c.meta->>'corp_name' AS corp_name,
     c.meta->>'report_nm' AS report_nm,
     c.meta->>'rcept_dt'  AS rcept_dt"""
@@ -113,6 +114,14 @@ ORDER BY period DESC, rcept_no DESC
 """
 
 
+# 원본 표 (expander.py가 표 청크를 이 표 전체로 바꾼다)
+TABLES_SQL = """
+SELECT table_id, title, unit_raw, basis, period_label, as_of, header, cells, notes
+FROM filing_table
+WHERE table_id = ANY(%(ids)s)
+"""
+
+
 def dart_url(rcept_no: str) -> str:
     """접수번호로 DART 원문 링크를 만든다."""
     return f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcept_no}"
@@ -186,6 +195,16 @@ def _rrf(rankings: list[list[dict[str, Any]]], k: int) -> list[dict[str, Any]]:
             scores[chunk_id] = scores.get(chunk_id, 0.0) + 1 / (RRF_K + rank)
     top = sorted(scores, key=lambda chunk_id: -scores[chunk_id])[:k]
     return [{**rows[chunk_id], "score": scores[chunk_id]} for chunk_id in top]
+
+
+async def get_tables(table_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """원본 표 여러 개를 한 번에 조회한다. {table_id: filing_table 행}. 없는 ID는 빠진다."""
+    if not table_ids:
+        return {}
+    async with pool.connection() as conn:
+        cur = await conn.execute(TABLES_SQL, {"ids": table_ids})
+        rows = await cur.fetchall()
+    return {row["table_id"]: row for row in rows}
 
 
 async def list_filings(corp_name: str | None = None) -> list[FilingRef]:
