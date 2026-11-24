@@ -41,6 +41,16 @@ class RetrievedChunk(BaseModel):
     expanded: bool = False      # True면 raw가 검색된 조각이 아니라 원본 표 전체 (expander.expand_tables)
 
 
+class SearchGroup(BaseModel):
+    """검색 대상 1개의 결과. pipeline이 만들고 answerer가 대상별로 묶어 LLM에 넘긴다 (API 응답에는 나가지 않음).
+    notice가 있으면 공시가 없는 대상(검색 안 함, chunks는 빈 목록)이다.
+    notice 없이 chunks만 비어 있으면 공시는 있지만 관련 근거를 찾지 못한 대상이다."""
+
+    label: str = Field(description="묶음 제목. 예: 삼성전자 · 분기보고서 (2026.09) · 찾을 내용: 매출")
+    chunks: list[RetrievedChunk] = Field(default_factory=list)
+    notice: str | None = Field(default=None, description="공시가 없을 때 안내 문장. 답변 앞에 붙는다")
+
+
 class FilingRef(BaseModel):
     """조회 가능한 공시 1건. 기간 필터를 정하거나 "공시가 없습니다" 안내에 쓴다."""
 
@@ -74,6 +84,6 @@ class AskResponse(BaseModel):
     sources: list[Source] = Field(description="답변에 사용한 근거 목록")
     search_args: dict | None = Field(
         default=None,
-        description="검색에 쓴 조건 (query, mentioned_company, corp_name, report_type, period, latest). "
+        description="검색에 쓴 조건 {targets: [대상마다 query, mentioned_company, corp_name, report_type, period, latest]}. "
         "'최근' 질문이면 report_type, period는 코드가 DB에서 고른 값이다. 확인용",
     )

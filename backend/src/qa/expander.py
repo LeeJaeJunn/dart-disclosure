@@ -18,14 +18,15 @@ from src.qa.schemas import RetrievedChunk
 
 TABLE_CHARS = 4000  # 원본 표로 바꾸는 최대 크기 (render_table 결과 기준, 약 2,600 토큰)
 # 2차 LLM에 넣는 근거 합계 상한 (약 8,000 토큰). 표를 모두 되돌리면 최대 MAX_CHUNK_CHARS × 5 = 10,000자라
-# 근거를 빼지 않고도 항상 이 안에 들어간다.
+# 근거를 빼지 않고도 항상 이 안에 들어간다. 검색 대상이 2개면 대상마다 6,000자 (3개 × 2,000자라 역시 들어간다).
 CONTEXT_CHARS = 12000
 
 _BASIS_LABELS = {"consolidated": "연결", "separate": "별도"}
 
 
-async def expand_tables(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
-    """표 청크를 원본 표 전체로 바꾼다. 순서는 검색 순위 그대로."""
+async def expand_tables(chunks: list[RetrievedChunk], budget: int = CONTEXT_CHARS) -> list[RetrievedChunk]:
+    """표 청크를 원본 표 전체로 바꾼다. 순서는 검색 순위 그대로.
+    budget: 근거 합계 상한. 검색 대상이 여럿이면 pipeline이 CONTEXT_CHARS를 대상 수로 나눠 넘긴다."""
     table_ids = list(dict.fromkeys(c.table_id for c in chunks if c.table_id))
     tables = await get_tables(table_ids)
     rendered = {table_id: render_table(table) for table_id, table in tables.items()}
@@ -44,7 +45,7 @@ async def expand_tables(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
         used.add(table_id)
         originals[len(out)] = chunk
         out.append(chunk.model_copy(update={"raw": table, "expanded": True}))
-    return _fit_budget(out, originals)
+    return _fit_budget(out, originals, budget)
 
 
 def prompt_chars(chunk: RetrievedChunk) -> int:
@@ -52,12 +53,14 @@ def prompt_chars(chunk: RetrievedChunk) -> int:
     return len(chunk.raw) if chunk.expanded else min(len(chunk.raw), MAX_CHUNK_CHARS)
 
 
-def _fit_budget(chunks: list[RetrievedChunk], originals: dict[int, RetrievedChunk]) -> list[RetrievedChunk]:
-    """근거 합계가 CONTEXT_CHARS를 넘으면 순위가 낮은 원본 표부터 검색된 조각으로 되돌린다.
+def _fit_budget(
+    chunks: list[RetrievedChunk], originals: dict[int, RetrievedChunk], budget: int = CONTEXT_CHARS
+) -> list[RetrievedChunk]:
+    """근거 합계가 budget을 넘으면 순위가 낮은 원본 표부터 검색된 조각으로 되돌린다.
     근거 개수와 순서는 그대로다."""
     out = list(chunks)
     for i in sorted(originals, reverse=True):  # 순위가 낮은(뒤쪽) 표부터
-        if sum(map(prompt_chars, out)) <= CONTEXT_CHARS:
+        if sum(map(prompt_chars, out)) <= budget:
             break
         out[i] = originals[i]
     return out
