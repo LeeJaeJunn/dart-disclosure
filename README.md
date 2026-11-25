@@ -49,6 +49,31 @@ uv run fastapi dev
 
 http://localhost:8000 에서 실행되며, API 문서는 `/docs`에서 볼 수 있습니다.
 
+### DART 공시 스케줄러
+
+로컬 DB를 실행하고 `backend/.env.example`을 참고해 `backend/.env`를 설정한 뒤 `backend/`에서 실행합니다.
+
+```bash
+# 기본 조건으로 한 번 Dry Run
+uv run python -m src.ingest.scheduler
+
+# Dry Run 반복 실행
+uv run python -m src.ingest.scheduler --interval 60
+
+# 미적재 공시 최대 한 건 실제 적재
+uv run python -m src.ingest.scheduler --ingest --limit 1
+```
+
+| 옵션 | 설명 | 기본값 |
+| --- | --- | --- |
+| `--corp-code` | 지정한 기업 한 곳만 조회 (DART 기업 고유번호 8자리) | 삼성전자(`00126380`), SK하이닉스(`00164779`) |
+| `--bgn-de` | 조회 시작일 (`YYYYMMDD`) | KST 오늘의 6일 전 |
+| `--end-de` | 조회 종료일 (`YYYYMMDD`) | KST 오늘 |
+| `--pblntf-ty` | DART 공시 유형 (`A`~`J`) | `A` (사업·반기·분기보고서 및 해당 정정공시) |
+| `--interval` | 실행 종료 후 다음 실행까지 대기 시간(초) | 1회 실행 |
+| `--ingest` | 실제 적재 실행 | Dry Run |
+| `--limit` | `--ingest` 사용 시 한 주기당 최대 적재 시도 건수 | 제한 없음 |
+
 ### 프론트엔드
 
 ```bash
